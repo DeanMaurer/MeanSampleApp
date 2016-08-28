@@ -1,0 +1,4 @@
+Turn on Webserver: http-server -c-1
+
+TODO:
+Implement an ID for each post so that the link to comments will work even if the posts get reordered via upvotes.
