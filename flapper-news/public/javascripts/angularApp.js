@@ -62,10 +62,17 @@
 
 // services/posts.js
 (function () {
-	angular.module("flapperNews").factory("posts", [function() {
+	angular.module("flapperNews").factory("posts", ['$http', function($http) {
 	var o = {
 		posts: []
 	};
+
+	o.getAll = function() {
+		return $http.get('/posts').success(function(data) {
+			angular.copy(data, o.posts);
+		});
+	};
+	
 	return o;
 }])}());
 
@@ -97,7 +104,12 @@
 				url: '/',
 				templateUrl: '/home.html',
 				controller: 'main',
-				controllerAs: 'main'
+				controllerAs: 'main',
+				resolve: {
+					postPromise: ['posts', function(posts) {
+						return posts.getAll();
+					}]
+				}
 			})
 			.state('posts', {
 				url: '/posts/{id}',
@@ -107,3 +119,5 @@
 			});
     }
 }());
+
+
