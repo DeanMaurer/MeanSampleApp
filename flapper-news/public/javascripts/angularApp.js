@@ -14,14 +14,9 @@
 
 		$scope.addPost = function() {
 			if($scope.title && $scope.title !== '') {
-				$scope.posts.push({
+				posts.create({
 					title: $scope.title,
 					link: $scope.link,
-					upvotes: 0,
-					comments: [
-						{author: 'Joe', body: 'Cool post!', upvotes: 0},
-						{author: 'Bob', body: 'Great idea but everything is wrong!', upvotes: 0}
-					]
 				});
 			}
 			$scope.title = '';
@@ -29,7 +24,7 @@
 		};
 
 		$scope.incrementUpvotes = function(post) {
-			post.upvotes += 1;
+			posts.upvote(post);
 		};
 	}
 }());
@@ -38,25 +33,26 @@
 (function () {
     angular.module("flapperNews").controller("postsCtrl", postsCtrl)
 
-    postsCtrl.$inject = ['$scope', '$stateParams', 'posts'];
-    function postsCtrl($scope, $stateParams, posts){
+    postsCtrl.$inject = ['$scope', 'posts', 'post'];
+    function postsCtrl($scope, posts, post){
 
-    	$scope.post = posts.posts[$stateParams.id];
+    	$scope.post = post;
 
     	$scope.addComment = function() {
     		if($scope.body !== '') {
-    			$scope.post.comments.push({
+    			posts.addComment(post._id, {
     				body: $scope.body,
-    				author: 'user',
-    				upvotes: 0
+    				author: 'user'
+    			}).success(function(comment) {
+    				$scope.post.comments.push(comment);
     			});
     		}
     		$scope.body = '';
     	};
 
     	$scope.incrementUpvotes = function(comment)  {
-    		comment.upvotes += 1;
-    	}
+    		posts.upvoteComment(post, comment);
+    	};
 	}
 }());
 
@@ -71,6 +67,36 @@
 		return $http.get('/posts').success(function(data) {
 			angular.copy(data, o.posts);
 		});
+	};
+
+	o.create = function(post) {
+		return $http.post('/posts', post).success(function(data) {
+			o.posts.push(data);
+		});
+	};
+
+	o.upvote = function(post) {
+		return $http.put('/posts/' + post._id + '/upvote')
+			.success(function(data) {
+				post.upvotes += 1;
+			});
+	};
+
+	o.get = function(id) {
+		return $http.get('/posts/' + id).then(function(res) {
+			return res.data;
+		});
+	};
+
+	o.addComment = function(id, comment) {
+		return $http.post('/posts/' + id + '/comments', comment);
+	};
+
+	o.upvoteComment = function(post, comment) {
+		return $http.put('/posts/' + post._id + '/comments/' + comment._id + '/upvote')
+			.success(function(data) {
+				comment.upvotes += 1;
+			});
 	};
 	
 	return o;
@@ -115,7 +141,12 @@
 				url: '/posts/{id}',
 				templateUrl: '/posts.html',
 				controller: 'postsCtrl',
-				contollerAs: 'postsCtrl'
+				contollerAs: 'postsCtrl',
+				resolve: {
+					post: ['$stateParams', 'posts', function($stateParams, posts) {
+						return posts.get($stateParams.id);
+					}]
+				}
 			});
     }
 }());
