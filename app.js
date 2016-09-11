@@ -12,7 +12,7 @@ require('./models/Posts');
 require('./models/Comments');
 require('./models/Users');
 require('./config/passport');
-mongoose.connect(process.env.MONGOLAB_URI || 'mongodb://localhost/meals-development');
+mongoose.connect('mongodb://heroku_5qb0rprq:1geur08h7r3640vsfl3d0cr51n@ds029456.mlab.com:29456/heroku_5qb0rprq' || 'mongodb://localhost/news' );
 
 var routes = require('./routes/index');
 var users = require('./routes/users');
