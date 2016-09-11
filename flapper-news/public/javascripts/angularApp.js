@@ -7,9 +7,9 @@
 (function () {
     angular.module("flapperNews").controller("main", main)
 
-    main.$inject = ['$scope', 'posts'];
-    function main($scope, posts){
-    	var self = this;
+    main.$inject = ['$scope', 'posts', 'auth'];
+    function main($scope, posts, auth){
+    	$scope.isLoggedIn = auth.isLoggedIn;
 		$scope.posts = posts.posts;
 
 		$scope.addPost = function() {
@@ -17,6 +17,7 @@
 				posts.create({
 					title: $scope.title,
 					link: $scope.link,
+					author: auth.currentUser
 				});
 			}
 			$scope.title = '';
@@ -33,16 +34,16 @@
 (function () {
     angular.module("flapperNews").controller("postsCtrl", postsCtrl)
 
-    postsCtrl.$inject = ['$scope', 'posts', 'post'];
-    function postsCtrl($scope, posts, post){
-
+    postsCtrl.$inject = ['$scope', 'posts', 'post', 'auth'];
+    function postsCtrl($scope, posts, post, auth){
+    	$scope.isLoggedIn = auth.isLoggedIn;
     	$scope.post = post;
 
     	$scope.addComment = function() {
     		if($scope.body !== '') {
     			posts.addComment(post._id, {
     				body: $scope.body,
-    				author: 'user'
+    				author: auth.currentUser
     			}).success(function(comment) {
     				$scope.post.comments.push(comment);
     			});
@@ -56,51 +57,150 @@
 	}
 }());
 
+// controllers/authCtrl.js
+(function () {
+    angular.module("flapperNews").controller("authCtrl", authCtrl)
+
+    authCtrl.$inject = ['$scope', '$state', 'auth'];
+    function authCtrl($scope, $state, auth){
+    	$scope.user = {};
+
+    	$scope.register = function() {
+    		auth.register($scope.user).error(function(error) {
+    			$scope.error = error;
+    		}).then(function() {
+    			$state.go('main');
+    		});
+    	};
+
+    	$scope.login = function() {
+    		auth.logIn($scope.user).error(function(error) {
+    			$scope.error = error;
+    		}).then(function() {
+    			$state.go('main');
+    		});
+    	};
+	}
+}());
+
+// controllers/navCtrl.js
+(function () {
+    angular.module("flapperNews").controller("navCtrl", navCtrl)
+
+    navCtrl.$inject = ['$scope', 'auth'];
+    function navCtrl($scope, auth){
+    	$scope.isLoggedIn = auth.isLoggedIn;
+    	$scope.currentUser = auth.currentUser;
+    	$scope.logOut = auth.logOut;
+	}
+}());
+
 // services/posts.js
 (function () {
-	angular.module("flapperNews").factory("posts", ['$http', function($http) {
-	var o = {
-		posts: []
-	};
+	angular.module("flapperNews").factory("posts", ['$http', 'auth', function($http, auth) {
+		var o = {
+			posts: []
+		};
 
-	o.getAll = function() {
-		return $http.get('/posts').success(function(data) {
-			angular.copy(data, o.posts);
-		});
-	};
+		o.getAll = function() {
+			return $http.get('/posts').success(function(data) {
+				angular.copy(data, o.posts);
+			});
+		};
 
-	o.create = function(post) {
-		return $http.post('/posts', post).success(function(data) {
-			o.posts.push(data);
-		});
-	};
+		o.create = function(post) {
+			return $http.post('/posts', post, {
+				headers: {Authorization: 'Bearer ' +auth.getToken()}
+			}).success(function(data) {
+				o.posts.push(data);
+			});
+		};
 
-	o.upvote = function(post) {
-		return $http.put('/posts/' + post._id + '/upvote')
-			.success(function(data) {
+		o.upvote = function(post) {
+			return $http.put('/posts/' + post._id + '/upvote', null, {
+				headers: {Authorization: 'Bearer '+auth.getToken()}
+			}).success(function(data) {
 				post.upvotes += 1;
 			});
-	};
+		};
 
-	o.get = function(id) {
-		return $http.get('/posts/' + id).then(function(res) {
-			return res.data;
-		});
-	};
+		o.get = function(id) {
+			return $http.get('/posts/' + id).then(function(res) {
+				return res.data;
+			});
+		};
 
-	o.addComment = function(id, comment) {
-		return $http.post('/posts/' + id + '/comments', comment);
-	};
+		o.addComment = function(id, comment) {
+			return $http.post('/posts/' + id + '/comments', comment, {
+				headers: {Authorization: 'Bearer '+auth.getToken()}
+			});
+		};
 
-	o.upvoteComment = function(post, comment) {
-		return $http.put('/posts/' + post._id + '/comments/' + comment._id + '/upvote')
-			.success(function(data) {
+		o.upvoteComment = function(post, comment) {
+			return $http.put('/posts/' + post._id + '/comments/' + comment._id + '/upvote', null, {
+				headers: {Authorization: 'Bearer '+auth.getToken()}
+			}).success(function(data) {
 				comment.upvotes += 1;
 			});
-	};
-	
-	return o;
-}])}());
+		};
+		
+		return o;
+	}])
+}());
+
+// services/auth.js
+(function () {
+	angular.module("flapperNews").factory("auth", ['$http', '$window', function($http, $window) {
+		var auth = {};
+
+		auth.saveToken = function(token) {
+			$window.localStorage['flapper-news-token'] = token;
+		};
+
+		auth.getToken = function() {
+			return $window.localStorage['flapper-news-token'];
+		}
+
+		auth.isLoggedIn = function() {
+			var token = auth.getToken();
+
+			if(token) {
+				var payload = JSON.parse($window.atob(token.split('.')[1]));
+
+				return payload.exp > Date.now() / 1000;
+			} else {
+				return false;
+			}
+		};
+
+		auth.currentUser = function() {
+			if(auth.isLoggedIn()) {
+				var token = auth.getToken();
+				var payload = JSON.parse($window.atob(token.split('.')[1]));
+			
+				return payload.username;
+			}
+		};
+
+		auth.register = function(user) {
+			return $http.post('/register', user).success(function(data) {
+				auth.saveToken(data.token);
+			});
+		};
+
+		auth.logIn = function(user) {
+			return $http.post('/login', user).success(function(data) {
+				auth.saveToken(data.token);
+			});
+		};
+
+		auth.logOut = function() {
+			$window.localStorage.removeItem('flapper-news-token');
+		};
+
+		return auth;
+	}])
+}());
 
 // /app.run.js
 (function () {
@@ -147,6 +247,26 @@
 						return posts.get($stateParams.id);
 					}]
 				}
+			})
+			.state('login', {
+				url: '/login',
+				templateUrl: '/login.html',
+				controller: 'authCtrl',
+				onEnter: ['$state', 'auth', function($state, auth) {
+					if(auth.isLoggedIn()) {
+						$state.go('main');
+					}
+				}]
+			})
+			.state('register', {
+				url: '/register',
+				templateUrl: '/register.html',
+				controller: 'authCtrl',
+				onEnter: ['$state', 'auth', function($state, auth) {
+					if(auth.isLoggedIn()) {
+						$state.go('main');
+					}
+				}]
 			});
     }
 }());
